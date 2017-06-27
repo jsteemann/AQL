@@ -1,0 +1,106 @@
+/* import data into persons */
+
+/* show data
+FOR doc IN persons
+  LIMIT 10
+  RETURN doc
+*/
+
+/* restrict output to some attributes 
+FOR doc IN persons
+  LIMIT 10
+  RETURN KEEP(doc, ["name", "gender", "contact"])
+*/
+
+/* filter on some zip codes
+FOR doc IN persons
+  FILTER doc.contact.address.zip IN ["12345", "98843", "54432"]
+  RETURN KEEP(doc, ["name", "gender", "contact"])
+*/
+
+/* explain */
+/* add hash index on contact.address.zip */
+/* explain again */
+
+/* create second collection "eventsForZip" */
+/* insert data into eventsForZip 
+LET base = DATE_NOW() / 1000
+FOR i IN 1..300000
+  LET r = RAND()
+  INSERT { 
+    name: CONCAT("test", i), 
+    zip: TO_STRING(FLOOR(RAND() * 100000)),
+    type: r > 0.66 ? "rain" : r > 0.33 ? "sun" : "snow",
+    date: DATE_ISO8601(1000 * (base - FLOOR(RAND() * 365 * 4 * 86400))) 
+  } INTO eventsForZip
+*/
+
+/* inspect data in eventsForZip 
+FOR doc IN eventsForZip
+  LIMIT 5
+  RETURN doc
+*/
+
+/* filter on rain events in 2015 and 2016 in specific zip codes and return persons affected 
+FOR event IN eventsForZip
+  FILTER event.zip IN ["12345", "98843", "54432", "44444", "33333", "22222"]
+      && event.type == "rain" 
+      && event.date >= "2015" && event.date < "2017"
+  RETURN { 
+    zip: event.zip, 
+    date: event.date,
+    persons: (
+      FOR doc IN persons 
+        FILTER doc.contact.address.zip == event.zip
+        RETURN doc.name
+    )
+  }
+*/
+
+/* explain */
+/* create hash index on zip */
+/* explain again */
+
+
+/* count events for 2015 by type
+FOR event IN eventsForZip
+  FILTER event.date >= "2015" && event.date < "2016"
+  
+  COLLECT type = event.type WITH COUNT INTO count 
+  RETURN { type, count }
+*/
+
+/* explain */
+/* create skiplist index on date */
+/* explain */
+
+/* create edge collection "knows" */
+
+/* insert random connections
+LET randomPersons = (
+  FOR doc IN persons
+    SORT RAND()
+    LIMIT 10000
+    RETURN doc._id
+  )
+  
+FOR i IN 1..10000
+  INSERT {
+    _from: randomPersons[FLOOR(RAND() * 10000)],
+    _to: randomPersons[FLOOR(RAND() * 10000)]
+  } INTO knows
+*/
+
+/* query connections up to 3 levels deep
+LET person = (FOR doc IN knows SORT RAND() LIMIT 1 RETURN doc._from)[0]
+FOR v, e, p IN 1..3 OUTBOUND person knows
+  LET pathLength = LENGTH(p.vertices)
+  SORT pathLength
+  RETURN { 
+    from: p.vertices[0].name, 
+    to: p.vertices[-1].name, 
+    depth: pathLength - 1,
+    via: pathLength > 2 ? (FOR i IN 1..pathLength - 1 RETURN CONCAT(p.vertices[i].name.first, " ", p.vertices[i].name.last)) : "-"
+  }
+*/
+
